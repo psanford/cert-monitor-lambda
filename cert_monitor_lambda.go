@@ -55,7 +55,6 @@ func (s *server) Handler(evt events.CloudWatchEvent) error {
 
 	s.bucket = bucketName
 
-	// create an aws sdk v2 go
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithDisableRequestCompression(aws.Bool(true)))
 	if err != nil {
 		return err
@@ -139,14 +138,14 @@ func (s *server) Handler(evt events.CloudWatchEvent) error {
 			}
 
 			logCount++
-			go func() {
+			go func(state *LogState) {
 				result, err := s.processLog(ctx, lgr, state)
 				if err != nil {
 					errorChan <- err
 				} else {
 					resultChan <- result
 				}
-			}()
+			}(state)
 		}
 	}
 
@@ -209,12 +208,15 @@ func (s *server) processLog(ctx context.Context, lgr *slog.Logger, state *LogSta
 	if sth.TreeSize == state.LastFetched {
 		lgr.Info("log not changed")
 		return state, nil
+	} else if sth.TreeSize < state.LastFetched {
+		lgr.Error("tree went backwards, this should not happen", "last_fetched", state.LastFetched, "tree_size", sth.TreeSize)
+		return state, nil
 	}
 
 	start := int64(state.LastFetched + 1)
 	rawEntries, err := lc.GetRawEntries(ctx, start, int64(sth.TreeSize))
 	if err != nil {
-		lgr.Error("get raw entries err", "err", err)
+		lgr.Error("get raw entries err", "err", err, "start", start, "end", sth.TreeSize)
 		return state, nil
 	}
 
