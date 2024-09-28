@@ -213,7 +213,7 @@ func (s *server) processLog(ctx context.Context, lgr *slog.Logger, state *LogSta
 		return state, nil
 	}
 
-	start := int64(state.LastFetched + 1)
+	start := int64(state.LastFetched)
 	rawEntries, err := lc.GetRawEntries(ctx, start, int64(sth.TreeSize))
 	if err != nil {
 		lgr.Error("get raw entries err", "err", err, "start", start, "end", sth.TreeSize)
