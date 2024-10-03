@@ -182,9 +182,13 @@ func (s *server) Handler(evt events.CloudWatchEvent) error {
 func (s *server) processLog(ctx context.Context, lgr *slog.Logger, state *LogState) (*LogState, error) {
 	lgr = lgr.With("log", state.URL)
 	lgr.Info("fetch log")
-	var entriesSeen int
+	var (
+		entriesSeen    int
+		lastFetchedIdx int64
+		startIndex     = state.LastFetched
+	)
 	defer func() {
-		lgr.Info("fetch log done", "entry_count", entriesSeen)
+		lgr.Info("fetch log done", "entry_count", entriesSeen, "start_index", startIndex, "last_entry_fetched", lastFetchedIdx)
 	}()
 	lc, err := client.New(state.URL, http.DefaultClient, jsonclient.Options{})
 	if err != nil {
@@ -213,8 +217,10 @@ func (s *server) processLog(ctx context.Context, lgr *slog.Logger, state *LogSta
 		return state, nil
 	}
 
-	start := int64(state.LastFetched)
-	rawEntries, err := lc.GetRawEntries(ctx, start, int64(sth.TreeSize))
+	start := int64(state.LastFetched) + 1
+	end := int64(sth.TreeSize)
+
+	rawEntries, err := lc.GetRawEntries(ctx, start, end)
 	if err != nil {
 		lgr.Error("get raw entries err", "err", err, "start", start, "end", sth.TreeSize)
 		return state, nil
@@ -228,6 +234,8 @@ func (s *server) processLog(ctx context.Context, lgr *slog.Logger, state *LogSta
 			lgr.Error("get parse log err", "err", err)
 			continue
 		}
+
+		lastFetchedIdx = logEntry.Index
 
 		certType := "cert"
 		var cert *x509.Certificate
@@ -267,7 +275,7 @@ func (s *server) processLog(ctx context.Context, lgr *slog.Logger, state *LogSta
 		}
 	}
 
-	state.LastFetched = sth.TreeSize
+	state.LastFetched = uint64(lastFetchedIdx)
 	state.LastFetchedTime = time.Now()
 	return state, nil
 }
