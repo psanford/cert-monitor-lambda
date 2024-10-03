@@ -122,7 +122,15 @@ func (s *server) Handler(evt events.CloudWatchEvent) error {
 	resultChan := make(chan *LogState)
 	var logCount int
 
+	includeOperator := make(map[string]bool)
+	for _, operator := range s.conf.Operators {
+		includeOperator[operator] = true
+	}
+
 	for _, operator := range logList.Operators {
+		if len(includeOperator) > 0 && !includeOperator[operator.Name] {
+			continue
+		}
 		for _, log := range operator.Logs {
 			if log.State.LogStatus() != loglist3.UsableLogStatus {
 				continue

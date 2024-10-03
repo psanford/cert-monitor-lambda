@@ -17,6 +17,10 @@ type Config struct {
 	// list of regular expression patterns to match on
 	Patterns []string `toml:"patterns"`
 
+	// list of operator names to fetch from, empty will fetch from all
+	// see:  curl https://www.gstatic.com/ct/log_list/v3/log_list.json | jq '.operators[].name'
+	Operators []string `toml:"operators"`
+
 	// Coollect pre-certificate entries
 	IncludePreCerts bool `toml:"include_pre_certs"`
 }
