@@ -186,9 +186,10 @@ func (s *server) processLog(ctx context.Context, lgr *slog.Logger, state *LogSta
 		entriesSeen    int
 		lastFetchedIdx int64
 		startIndex     = state.LastFetched
+		t0             = time.Now()
 	)
 	defer func() {
-		lgr.Info("fetch log done", "entry_count", entriesSeen, "start_index", startIndex, "last_entry_fetched", lastFetchedIdx)
+		lgr.Info("fetch log done", "entry_count", entriesSeen, "start_index", startIndex, "last_entry_fetched", lastFetchedIdx, "took", time.Since(t0))
 	}()
 	lc, err := client.New(state.URL, http.DefaultClient, jsonclient.Options{})
 	if err != nil {
@@ -217,59 +218,65 @@ func (s *server) processLog(ctx context.Context, lgr *slog.Logger, state *LogSta
 		return state, nil
 	}
 
-	start := int64(state.LastFetched) + 1
-	end := int64(sth.TreeSize)
+	var (
+		start   = int64(state.LastFetched) + 1
+		end     = int64(sth.TreeSize)
+		maxIter = 10
+	)
 
-	rawEntries, err := lc.GetRawEntries(ctx, start, end)
-	if err != nil {
-		lgr.Error("get raw entries err", "err", err, "start", start, "end", sth.TreeSize)
-		return state, nil
-	}
-
-	for i, entry := range rawEntries.Entries {
-		entriesSeen++
-		index := start + int64(i)
-		logEntry, err := ct.LogEntryFromLeaf(index, &entry)
-		if x509.IsFatal(err) {
-			lgr.Error("get parse log err", "err", err)
-			continue
+	for i := 0; start < end && i < maxIter; i++ {
+		rawEntries, err := lc.GetRawEntries(ctx, start, end)
+		if err != nil {
+			lgr.Error("get raw entries err", "err", err, "start", start, "end", sth.TreeSize)
+			return state, nil
 		}
+		start += int64(len(rawEntries.Entries))
 
-		lastFetchedIdx = logEntry.Index
+		for i, entry := range rawEntries.Entries {
+			entriesSeen++
+			index := start + int64(i)
+			logEntry, err := ct.LogEntryFromLeaf(index, &entry)
+			if x509.IsFatal(err) {
+				lgr.Error("get parse log err", "err", err)
+				continue
+			}
 
-		certType := "cert"
-		var cert *x509.Certificate
-		if logEntry.X509Cert != nil {
-			cert = logEntry.X509Cert
-		}
+			lastFetchedIdx = logEntry.Index
 
-		if s.conf.IncludePreCerts && logEntry.Precert != nil {
-			certType = "precert"
-			cert = logEntry.Precert.TBSCertificate
-		}
+			certType := "cert"
+			var cert *x509.Certificate
+			if logEntry.X509Cert != nil {
+				cert = logEntry.X509Cert
+			}
 
-		if cert != nil {
-			if match, name, matchStr := s.nameMatches(cert); match {
-				b := make([]byte, 16)
-				rand.Read(b)
-				bstr := base64.URLEncoding.EncodeToString(b)
-				key := fmt.Sprintf("certs/%s-%s-%s.json", time.Now().Format(time.RFC3339Nano), bstr, name)
-				lgr.Info("match", "type", certType, "rule", matchStr, "name", name, "key", key)
+			if s.conf.IncludePreCerts && logEntry.Precert != nil {
+				certType = "precert"
+				cert = logEntry.Precert.TBSCertificate
+			}
 
-				jsonTxt, err := json.Marshal(entry)
-				if err != nil {
-					lgr.Error("marshal json err", "key", key, "err", err)
-					return nil, err
-				}
+			if cert != nil {
+				if match, name, matchStr := s.nameMatches(cert); match {
+					b := make([]byte, 16)
+					rand.Read(b)
+					bstr := base64.URLEncoding.EncodeToString(b)
+					key := fmt.Sprintf("certs/%s-%s-%s.json", time.Now().Format(time.RFC3339Nano), bstr, name)
+					lgr.Info("match", "type", certType, "rule", matchStr, "name", name, "key", key)
 
-				_, err = s.s3.PutObject(ctx, &s3.PutObjectInput{
-					Bucket: &s.bucket,
-					Key:    &key,
-					Body:   bytes.NewBuffer(jsonTxt),
-				})
-				if err != nil {
-					lgr.Error("put cert err", "key", key, "err", err)
-					return nil, fmt.Errorf("s3 put object err: %w", err)
+					jsonTxt, err := json.Marshal(entry)
+					if err != nil {
+						lgr.Error("marshal json err", "key", key, "err", err)
+						return nil, err
+					}
+
+					_, err = s.s3.PutObject(ctx, &s3.PutObjectInput{
+						Bucket: &s.bucket,
+						Key:    &key,
+						Body:   bytes.NewBuffer(jsonTxt),
+					})
+					if err != nil {
+						lgr.Error("put cert err", "key", key, "err", err)
+						return nil, fmt.Errorf("s3 put object err: %w", err)
+					}
 				}
 			}
 		}
