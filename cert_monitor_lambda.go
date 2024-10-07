@@ -213,15 +213,15 @@ func (s *server) processLog(ctx context.Context, lgr *slog.Logger, state *LogSta
 
 	if state.LastFetched == 0 {
 		lgr.Info("init state")
-		state.LastFetched = sth.TreeSize
+		state.LastFetched = sth.TreeSize - 1
 		state.LastFetchedTime = time.Now()
 		return state, nil
 	}
 
-	if sth.TreeSize == state.LastFetched {
+	if sth.TreeSize == state.LastFetched+1 {
 		lgr.Info("log not changed")
 		return state, nil
-	} else if sth.TreeSize < state.LastFetched {
+	} else if sth.TreeSize <= state.LastFetched {
 		lgr.Error("tree went backwards, this should not happen", "last_fetched", state.LastFetched, "tree_size", sth.TreeSize)
 		return state, nil
 	}
