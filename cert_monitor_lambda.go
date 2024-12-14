@@ -223,6 +223,7 @@ func (s *server) processLog(ctx context.Context, lgr *slog.Logger, state *LogSta
 		return state, nil
 	} else if sth.TreeSize <= state.LastFetched {
 		lgr.Error("tree went backwards, this should not happen", "last_fetched", state.LastFetched, "tree_size", sth.TreeSize)
+		state.LastFetched = sth.TreeSize - 1
 		return state, nil
 	}
 
