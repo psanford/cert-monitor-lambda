@@ -178,7 +178,7 @@ func (s *server) Handler(evt events.CloudWatchEvent) error {
 	_, err = s.s3.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: &s.bucket,
 		Key:    &logStateKey,
-		Body:   bytes.NewBuffer(statesTxt),
+		Body:   bytes.NewReader(statesTxt),
 	})
 	if err != nil {
 		return fmt.Errorf("put state file err %w", err)
