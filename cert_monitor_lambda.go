@@ -354,6 +354,7 @@ func fetchLogList() (*loglist3.LogList, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetch log list err: %s", err)
 	}
+	defer req.Body.Close()
 
 	llData, err := io.ReadAll(req.Body)
 	if err != nil {
