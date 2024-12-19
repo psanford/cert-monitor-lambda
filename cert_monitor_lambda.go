@@ -239,7 +239,6 @@ func (s *server) processLog(ctx context.Context, lgr *slog.Logger, state *LogSta
 			lgr.Error("get raw entries err", "err", err, "start", start, "end", sth.TreeSize)
 			return state, nil
 		}
-		start += int64(len(rawEntries.Entries))
 
 		for i, entry := range rawEntries.Entries {
 			entriesSeen++
@@ -289,6 +288,8 @@ func (s *server) processLog(ctx context.Context, lgr *slog.Logger, state *LogSta
 				}
 			}
 		}
+
+		start += int64(len(rawEntries.Entries))
 	}
 
 	state.LastFetched = uint64(lastFetchedIdx)
